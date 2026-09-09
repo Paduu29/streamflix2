@@ -9,6 +9,7 @@ import com.streamflixreborn.streamflix.database.ProfileDatabase
 import com.streamflixreborn.streamflix.database.dao.ProfileDao
 import com.streamflixreborn.streamflix.models.Profile
 import com.streamflixreborn.streamflix.providers.Provider
+import com.streamflixreborn.streamflix.sync.CloudSyncManager
 import kotlinx.coroutines.flow.Flow
 
 object ProfileManager {
@@ -17,6 +18,7 @@ object ProfileManager {
     private const val GLOBAL_PREFS_NAME = "${BuildConfig.APPLICATION_ID}.profile_global"
     private const val KEY_ACTIVE_PROFILE_ID = "ACTIVE_PROFILE_ID"
     private const val KEY_PROFILE_COLOR_MIGRATED = "PROFILE_COLOR_MIGRATED"
+    private const val KEY_LEGACY_PREFS_MIGRATED = "LEGACY_PREFS_MIGRATED"
     private const val DEFAULT_PROFILE_ID = "default"
     private val profileColors = intArrayOf(
         0xFF1E88E5.toInt(), 0xFF43A047.toInt(), 0xFFE53935.toInt(),
@@ -72,7 +74,9 @@ object ProfileManager {
         }
 
         migrateLegacyProfileColors()
+        migrateLegacyPrefs()
         applyActiveProfilePrefs()
+        DnsResolver.setDnsUrl(UserPreferences.dohProviderUrl)
         Log.i(TAG, "Initialized. Active profile: ${_activeProfile?.name} (${_activeProfile?.id})")
     }
 
@@ -89,21 +93,27 @@ object ProfileManager {
         _activeProfile = defaultProfile
         globalPrefs?.edit()?.putString(KEY_ACTIVE_PROFILE_ID, defaultProfile.id)?.apply()
 
-        migrateLegacyPrefs()
         migrateLegacyDatabasesToDefaultProfile()
         UserDataCache.migrateLegacyCacheToDefaultProfile(appContext, Provider.providers.keys)
         Log.i(TAG, "Created default profile: ${defaultProfile.name}")
     }
 
     private fun migrateLegacyPrefs() {
+        if (globalPrefs?.getBoolean(KEY_LEGACY_PREFS_MIGRATED, false) == true) return
+
         val legacyPrefs = appContext.getSharedPreferences(
             "${BuildConfig.APPLICATION_ID}.preferences",
+            Context.MODE_PRIVATE,
+        )
+        val legacyAndroidXPrefs = appContext.getSharedPreferences(
+            "${BuildConfig.APPLICATION_ID}_preferences",
             Context.MODE_PRIVATE,
         )
 
         val profilePrefs = getProfilePrefs(DEFAULT_PROFILE_ID)
         profilePrefs.edit().apply {
-            legacyPrefs.all.forEach { (key, value) ->
+            (legacyPrefs.all + legacyAndroidXPrefs.all).forEach { (key, value) ->
+                if (profilePrefs.contains(key)) return@forEach
                 when (value) {
                     is String -> putString(key, value)
                     is Int -> putInt(key, value)
@@ -120,7 +130,9 @@ object ProfileManager {
             commit()
         }
 
-        Log.i(TAG, "Migrated ${legacyPrefs.all.size} legacy preferences to profile: $DEFAULT_PROFILE_ID")
+        globalPrefs?.edit()?.putBoolean(KEY_LEGACY_PREFS_MIGRATED, true)?.apply()
+
+        Log.i(TAG, "Migrated ${legacyPrefs.all.size + legacyAndroidXPrefs.all.size} legacy preferences to profile: $DEFAULT_PROFILE_ID")
     }
 
     private fun migrateLegacyDatabasesToDefaultProfile() {
@@ -215,6 +227,7 @@ object ProfileManager {
         globalPrefs?.edit()?.putString(KEY_ACTIVE_PROFILE_ID, profileId)?.apply()
 
         applyActiveProfilePrefs()
+        DnsResolver.setDnsUrl(UserPreferences.dohProviderUrl)
 
         if (preserveProvider && currentProviderName != UserPreferences.getCurrentProviderName()) {
             UserPreferences.setCurrentProviderName(currentProviderName)
@@ -223,6 +236,7 @@ object ProfileManager {
         // when the selected provider remains the same. Refresh all active
         // provider screens, especially Home, in that case as well.
         ProviderChangeNotifier.notifyProviderChanged()
+        CloudSyncManager.onProfileChanged(appContext, profileId)
         Log.i(TAG, "Switched to profile: ${profile.name} (${profile.id})")
     }
 
@@ -234,11 +248,11 @@ object ProfileManager {
     }
 
     fun getProfilePrefs(profileId: String): SharedPreferences {
-        return appContext.getSharedPreferences(
-            "${BuildConfig.APPLICATION_ID}.preferences_${profileId}",
-            Context.MODE_PRIVATE,
-        )
+        return appContext.getSharedPreferences(profilePreferencesName(profileId), Context.MODE_PRIVATE)
     }
+
+    fun profilePreferencesName(profileId: String): String =
+        "${BuildConfig.APPLICATION_ID}.preferences_$profileId"
 
     fun getAllProfilesFlow(): Flow<List<Profile>>? = profileDao?.getAllProfiles()
 
@@ -286,6 +300,8 @@ object ProfileManager {
         if (allProfiles.size <= 1) return false
 
         val profile = profileDao?.getProfileById(id) ?: return false
+        CloudSyncManager.onProfileDeleted(appContext, id)
+        UserDataCache.clearAll(appContext, id)
         profileDao?.delete(profile)
 
         val profilePrefs = getProfilePrefs(id)

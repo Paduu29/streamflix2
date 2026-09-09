@@ -392,6 +392,7 @@
     <string name="cloud_sync_screen_summary">Synchronize favorites and watch history between devices</string>
     <string name="cloud_sync_account_category">Supabase account</string>
     <string name="cloud_sync_account_status">Account status</string>
+    <string name="cloud_sync_active_profile">Profile: %1$s</string>
     <string name="cloud_sync_signed_out">Not signed in</string>
     <string name="cloud_sync_signed_in_as">Signed in as %1$s</string>
     <string name="cloud_sync_sign_in">Sign in</string>

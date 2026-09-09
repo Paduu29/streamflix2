@@ -23,7 +23,6 @@ import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
 import androidx.preference.SwitchPreferenceCompat
@@ -227,6 +226,9 @@ class SettingsMobileFragment : PreferenceFragmentCompat() {
     }
 
     private fun renderCurrentScreen() {
+        getPreferenceManager().setSharedPreferencesName(
+            ProfileManager.profilePreferencesName(ProfileManager.activeProfileId ?: "default")
+        )
         setPreferencesFromResource(R.xml.settings_mobile, currentScreenState.rootKey)
         if (::backupRestoreManager.isInitialized) {
             displaySettings()
@@ -524,9 +526,10 @@ class SettingsMobileFragment : PreferenceFragmentCompat() {
         }
 
         findPreference<SwitchPreference>("UPDATE_CHECK_ENABLED")?.isChecked = UserPreferences.updateCheckEnabled
-        findPreference<SwitchPreference>("UPDATE_CHECK_ENABLED")?.setOnPreferenceChangeListener { _, newValue ->
+        findPreference<SwitchPreference>("UPDATE_CHECK_ENABLED")?.setOnPreferenceChangeListener { preference, newValue ->
             UserPreferences.updateCheckEnabled = newValue as Boolean
-            true
+            (preference as SwitchPreference).isChecked = newValue
+            false
         }
 
         findPreference<SwitchPreference>("SERVER_AUTO_SUBTITLES_DISABLED")?.apply {
@@ -795,10 +798,7 @@ class SettingsMobileFragment : PreferenceFragmentCompat() {
         }
 
         findPreference<Preference>("preferred_player_reset")?.setOnPreferenceClickListener {
-            PreferenceManager.getDefaultSharedPreferences(requireContext())
-                .edit()
-                .remove("preferred_smarttube_package")
-                .apply()
+            UserPreferences.removeProfilePreference("preferred_smarttube_package")
             Toast.makeText(requireContext(), R.string.settings_trailer_player_reset, Toast.LENGTH_SHORT).show()
             true
         }
@@ -1373,10 +1373,12 @@ class SettingsMobileFragment : PreferenceFragmentCompat() {
         if (!isAdded) return
         val oldProfileId = ProfileManager.activeProfileId
         val oldLang = oldProfileId?.let { AppLanguageManager.getProfileLanguage(requireContext(), it) }
+        val oldTheme = UserPreferences.selectedTheme
         lifecycleScope.launch {
             ProfileManager.switchToProfile(profile.id)
             val newLang = AppLanguageManager.getProfileLanguage(requireContext(), profile.id)
-            if (newLang != (oldLang ?: AppLanguageManager.SYSTEM_LANGUAGE)) {
+            val newTheme = UserPreferences.selectedTheme
+            if (newLang != (oldLang ?: AppLanguageManager.SYSTEM_LANGUAGE) || newTheme != oldTheme) {
                 requireActivity().apply {
                     finish()
                     startActivity(Intent(this, this::class.java))

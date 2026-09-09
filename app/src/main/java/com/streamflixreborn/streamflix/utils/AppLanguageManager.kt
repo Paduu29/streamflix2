@@ -3,7 +3,6 @@ package com.streamflixreborn.streamflix.utils
 import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
-import com.streamflixreborn.streamflix.BuildConfig
 import com.streamflixreborn.streamflix.R
 import java.util.Locale
 
@@ -37,25 +36,27 @@ object AppLanguageManager {
 
     fun getSelectedLanguage(context: Context): String {
         val profileId = context
-            .getSharedPreferences("${BuildConfig.APPLICATION_ID}.profile_global", Context.MODE_PRIVATE)
+            .getSharedPreferences("${com.streamflixreborn.streamflix.BuildConfig.APPLICATION_ID}.profile_global", Context.MODE_PRIVATE)
             .getString("ACTIVE_PROFILE_ID", null)
 
         val storedLanguage = profileId?.let { id ->
             context
-                .getSharedPreferences("${BuildConfig.APPLICATION_ID}.preferences_$id", Context.MODE_PRIVATE)
+                .getSharedPreferences(ProfileManager.profilePreferencesName(id), Context.MODE_PRIVATE)
                 .getString("CURRENT_LANGUAGE", null)
         }?.takeIf { it == SYSTEM_LANGUAGE || it in getAvailableLanguageTags(context) }
-            ?: context
-                .getSharedPreferences("${BuildConfig.APPLICATION_ID}.preferences", Context.MODE_PRIVATE)
-                .getString("CURRENT_LANGUAGE", null)
-                ?.takeIf { it == SYSTEM_LANGUAGE || it in getAvailableLanguageTags(context) }
+            ?: if (profileId == null) {
+                context
+                    .getSharedPreferences("${com.streamflixreborn.streamflix.BuildConfig.APPLICATION_ID}.preferences", Context.MODE_PRIVATE)
+                    .getString("CURRENT_LANGUAGE", null)
+                    ?.takeIf { it == SYSTEM_LANGUAGE || it in getAvailableLanguageTags(context) }
+            } else null
 
         return storedLanguage ?: SYSTEM_LANGUAGE
     }
 
     fun getProfileLanguage(context: Context, profileId: String): String {
         return context
-            .getSharedPreferences("${BuildConfig.APPLICATION_ID}.preferences_$profileId", Context.MODE_PRIVATE)
+                .getSharedPreferences(ProfileManager.profilePreferencesName(profileId), Context.MODE_PRIVATE)
             .getString("CURRENT_LANGUAGE", null)
             ?.takeIf { it == SYSTEM_LANGUAGE || it in getAvailableLanguageTags(context) }
             ?: SYSTEM_LANGUAGE

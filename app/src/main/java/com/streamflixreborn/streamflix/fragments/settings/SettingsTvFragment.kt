@@ -35,7 +35,6 @@ import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
-import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import androidx.preference.SeekBarPreference
 import androidx.preference.SwitchPreference
@@ -224,6 +223,9 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
     }
 
     private fun renderCurrentScreen() {
+        getPreferenceManager().setSharedPreferencesName(
+            ProfileManager.profilePreferencesName(ProfileManager.activeProfileId ?: "default")
+        )
         setPreferencesFromResource(R.xml.settings_tv, currentScreenState.rootKey)
         if (::backupRestoreManager.isInitialized) {
             displaySettings()
@@ -550,9 +552,10 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
 
         findPreference<SwitchPreference>("UPDATE_CHECK_ENABLED")?.apply {
             isChecked = UserPreferences.updateCheckEnabled
-            setOnPreferenceChangeListener { _, newValue ->
+            setOnPreferenceChangeListener { preference, newValue ->
                 UserPreferences.updateCheckEnabled = newValue as Boolean
-                true
+                (preference as SwitchPreference).isChecked = newValue
+                false
             }
         }
 
@@ -808,10 +811,7 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
         }
 
         findPreference<Preference>("preferred_player_reset")?.setOnPreferenceClickListener {
-            PreferenceManager.getDefaultSharedPreferences(requireContext())
-                .edit()
-                .remove("preferred_smarttube_package")
-                .apply()
+            UserPreferences.removeProfilePreference("preferred_smarttube_package")
             Toast.makeText(requireContext(), R.string.settings_trailer_player_reset, Toast.LENGTH_SHORT).show()
             true
         }
@@ -2211,10 +2211,12 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
         if (!isAdded) return
         val oldProfileId = ProfileManager.activeProfileId
         val oldLang = oldProfileId?.let { AppLanguageManager.getProfileLanguage(requireContext(), it) }
+        val oldTheme = UserPreferences.selectedTheme
         lifecycleScope.launch {
             ProfileManager.switchToProfile(profile.id)
             val newLang = AppLanguageManager.getProfileLanguage(requireContext(), profile.id)
-            if (newLang != (oldLang ?: AppLanguageManager.SYSTEM_LANGUAGE)) {
+            val newTheme = UserPreferences.selectedTheme
+            if (newLang != (oldLang ?: AppLanguageManager.SYSTEM_LANGUAGE) || newTheme != oldTheme) {
                 requireActivity().apply {
                     finish()
                     startActivity(Intent(this, this::class.java))

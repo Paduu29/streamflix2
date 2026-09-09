@@ -153,14 +153,14 @@ class HomeViewModel : ViewModel() {
 
             // RECENTLY WATCHED - Recorded immediately when playback starts.
             combine(
-                database.movieDao().getRecentlyWatched(),
-                database.tvShowDao().getRecentlyWatched(),
+                db().movieDao().getRecentlyWatched(),
+                db().tvShowDao().getRecentlyWatched(),
             ) { movies, tvShows ->
                 val episodeIds = tvShows.mapNotNull { it.lastPlayedEpisodeId }.distinct()
                 val episodesById = if (episodeIds.isEmpty()) {
                     emptyMap()
                 } else {
-                    database.episodeDao().getByIds(episodeIds).associateBy { it.id }
+                    db().episodeDao().getByIds(episodeIds).associateBy { it.id }
                 }
 
                 val recentlyWatchedTvShows = tvShows.map { tvShow ->
@@ -181,10 +181,10 @@ class HomeViewModel : ViewModel() {
             }.flowOn(Dispatchers.IO),
 
             // FAVORITE MOVIES
-            database.movieDao().getFavorites().flowOn(Dispatchers.IO),
+            db().movieDao().getFavorites().flowOn(Dispatchers.IO),
 
             // FAVORITE TV SHOWS
-            database.tvShowDao().getFavorites().flowOn(Dispatchers.IO),
+            db().tvShowDao().getFavorites().flowOn(Dispatchers.IO),
 
         ) { continueWatching, recentlyWatched, favoritesMovies, favoriteTvShows ->
             HomeHistory(continueWatching, recentlyWatched, favoritesMovies, favoriteTvShows)

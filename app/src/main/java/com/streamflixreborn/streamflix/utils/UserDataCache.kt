@@ -131,11 +131,15 @@ object UserDataCache {
         cacheFile(context, key).delete()
     }
 
-    fun clearAll(context: Context) {
-        memoryCache.clear()
+    fun clearAll(context: Context, profileId: String = ProfileManager.activeProfileId ?: "default") {
+        val memoryPrefix = "${profileId}__"
+        memoryCache.keys.filter { it.startsWith(memoryPrefix) }.forEach(memoryCache::remove)
         val cacheDir = File(context.filesDir, "user-data-cache")
         if (cacheDir.exists()) {
-            cacheDir.deleteRecursively()
+            val filePrefix = cacheFile(context, memoryPrefix).name.removeSuffix(".json")
+            cacheDir.listFiles()
+                ?.filter { it.name.startsWith(filePrefix) }
+                ?.forEach { it.delete() }
         }
     }
 

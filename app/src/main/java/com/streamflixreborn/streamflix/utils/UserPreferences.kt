@@ -30,6 +30,9 @@ object UserPreferences {
             field = value
             if (value != null) {
                 prefs = value
+                providerCache = runCatching {
+                    JSONObject(value.getString(Key.PROVIDER_CACHE.name, "{}") ?: "{}")
+                }.getOrDefault(JSONObject())
                 debugLog { "Switched to profile-specific prefs" }
             }
         }
@@ -85,6 +88,17 @@ object UserPreferences {
             val jsonString = Key.PROVIDER_CACHE.getString() ?: "{}"
             providerCache = runCatching { JSONObject(jsonString) }.getOrDefault(JSONObject())
         }
+    }
+
+    fun getProfilePreferenceString(key: String, defaultValue: String? = null): String? =
+        effectivePrefs.getString(key, defaultValue)
+
+    fun setProfilePreferenceString(key: String, value: String) {
+        effectivePrefs.edit().putString(key, value).apply()
+    }
+
+    fun removeProfilePreference(key: String) {
+        effectivePrefs.edit().remove(key).apply()
     }
 
     var profileId: String?

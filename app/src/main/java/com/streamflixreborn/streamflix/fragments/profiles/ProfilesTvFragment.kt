@@ -104,13 +104,15 @@ class ProfilesTvFragment : Fragment() {
         if (isSwitchingProfile || !isAdded) return
         val oldProfileId = ProfileManager.activeProfileId
         val oldLang = oldProfileId?.let { AppLanguageManager.getProfileLanguage(requireContext(), it) }
+        val oldTheme = UserPreferences.selectedTheme
         isSwitchingProfile = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 ProfileManager.switchToProfile(profile.id, preserveProvider = !cameFromProviders)
                 if (!isAdded) return@launch
                 val newLang = AppLanguageManager.getProfileLanguage(requireContext(), profile.id)
-                if (newLang != (oldLang ?: AppLanguageManager.SYSTEM_LANGUAGE)) {
+                val newTheme = UserPreferences.selectedTheme
+                if (newLang != (oldLang ?: AppLanguageManager.SYSTEM_LANGUAGE) || newTheme != oldTheme) {
                     requireActivity().apply {
                         finish()
                         startActivity(Intent(this, this::class.java).apply {
