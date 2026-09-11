@@ -19,6 +19,9 @@ object ProfileManager {
     private const val KEY_ACTIVE_PROFILE_ID = "ACTIVE_PROFILE_ID"
     private const val KEY_PROFILE_COLOR_MIGRATED = "PROFILE_COLOR_MIGRATED"
     private const val KEY_LEGACY_PREFS_MIGRATED = "LEGACY_PREFS_MIGRATED"
+    private const val LEGACY_PREFS_MIGRATION_VERSION = 2
+    private const val KEY_LEGACY_PREFS_MIGRATION_VERSION = "LEGACY_PREFS_MIGRATION_VERSION"
+    private const val PARENTAL_CONTROL_MAX_AGE = "PARENTAL_CONTROL_MAX_AGE"
     private const val DEFAULT_PROFILE_ID = "default"
     private val profileColors = intArrayOf(
         0xFF1E88E5.toInt(), 0xFF43A047.toInt(), 0xFFE53935.toInt(),
@@ -99,7 +102,8 @@ object ProfileManager {
     }
 
     private fun migrateLegacyPrefs() {
-        if (globalPrefs?.getBoolean(KEY_LEGACY_PREFS_MIGRATED, false) == true) return
+        val migrationVersion = globalPrefs?.getInt(KEY_LEGACY_PREFS_MIGRATION_VERSION, 0) ?: 0
+        if (migrationVersion >= LEGACY_PREFS_MIGRATION_VERSION) return
 
         val legacyPrefs = appContext.getSharedPreferences(
             "${BuildConfig.APPLICATION_ID}.preferences",
@@ -112,25 +116,28 @@ object ProfileManager {
 
         val profilePrefs = getProfilePrefs(DEFAULT_PROFILE_ID)
         profilePrefs.edit().apply {
-            (legacyPrefs.all + legacyAndroidXPrefs.all).forEach { (key, value) ->
+            val legacyValues = legacyPrefs.all + legacyAndroidXPrefs.all
+            legacyValues.forEach { (key, value) ->
+                if (key == "UPDATE_CHECK_ENABLED") return@forEach
                 if (profilePrefs.contains(key)) return@forEach
-                when (value) {
-                    is String -> putString(key, value)
-                    is Int -> putInt(key, value)
-                    is Long -> putLong(key, value)
-                    is Float -> putFloat(key, value)
-                    is Boolean -> putBoolean(key, value)
-                    is Set<*> -> {
-                        @Suppress("UNCHECKED_CAST")
-                        putStringSet(key, value as Set<String>)
-                    }
-                    else -> {}
-                }
+                putLegacyValue(key, value)
+            }
+
+            // AndroidX ListPreference stores this value as String, while an
+            // older UserPreferences setter could have stored it as Int.
+            // Repair only this known collision in the initial profile.
+            val existingMaxAge = profilePrefs.all[PARENTAL_CONTROL_MAX_AGE]
+            when (val canonicalMaxAge = canonicalMaxAge(existingMaxAge)) {
+                null -> if (existingMaxAge != null) remove(PARENTAL_CONTROL_MAX_AGE)
+                else -> putString(PARENTAL_CONTROL_MAX_AGE, canonicalMaxAge)
             }
             commit()
         }
 
-        globalPrefs?.edit()?.putBoolean(KEY_LEGACY_PREFS_MIGRATED, true)?.apply()
+        globalPrefs?.edit()
+            ?.putBoolean(KEY_LEGACY_PREFS_MIGRATED, true)
+            ?.putInt(KEY_LEGACY_PREFS_MIGRATION_VERSION, LEGACY_PREFS_MIGRATION_VERSION)
+            ?.commit()
 
         Log.i(TAG, "Migrated ${legacyPrefs.all.size + legacyAndroidXPrefs.all.size} legacy preferences to profile: $DEFAULT_PROFILE_ID")
     }
@@ -247,6 +254,24 @@ object ProfileManager {
         UserPreferences.profileId = profileId
     }
 
+    private fun SharedPreferences.Editor.putLegacyValue(key: String, value: Any?) {
+        if (key == PARENTAL_CONTROL_MAX_AGE) {
+            canonicalMaxAge(value)?.let { putString(key, it) }
+            return
+        }
+        when (value) {
+            is String -> putString(key, value)
+            is Int -> putInt(key, value)
+            is Long -> putLong(key, value)
+            is Float -> putFloat(key, value)
+            is Boolean -> putBoolean(key, value)
+            is Set<*> -> {
+                @Suppress("UNCHECKED_CAST")
+                putStringSet(key, value as Set<String>)
+            }
+        }
+    }
+
     fun getProfilePrefs(profileId: String): SharedPreferences {
         return appContext.getSharedPreferences(profilePreferencesName(profileId), Context.MODE_PRIVATE)
     }
@@ -317,4 +342,10 @@ object ProfileManager {
     }
 
     suspend fun getProfileCount(): Int = profileDao?.getProfileCount() ?: 1
+}
+
+internal fun canonicalMaxAge(value: Any?): String? = when (value) {
+    is String -> value.takeIf { it.isEmpty() || it.toIntOrNull() != null }
+    is Number -> value.toInt().toString()
+    else -> null
 }

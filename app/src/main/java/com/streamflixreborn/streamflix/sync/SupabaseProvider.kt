@@ -92,8 +92,16 @@ object SupabaseProvider {
         }
     }
 
-    suspend fun initialize(context: Context) {
-        clientFor(context, ProfileManager.activeProfileId ?: "default")
+    /**
+     * Initializes the active profile when a connection has been configured.
+     *
+     * Startup is allowed to run without Supabase. Callers that explicitly need
+     * Supabase should continue to use [clientFor], which reports the actionable
+     * configuration error.
+     */
+    suspend fun initialize(context: Context): SupabaseClient? {
+        if (readConfig(context) == null) return null
+        return clientFor(context, ProfileManager.activeProfileId ?: "default")
     }
 
     suspend fun removeProfile(profileId: String) {

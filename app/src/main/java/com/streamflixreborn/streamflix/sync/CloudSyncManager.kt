@@ -65,8 +65,7 @@ object CloudSyncManager {
     suspend fun initialize(context: Context) {
         val appContext = context.applicationContext
         val profileId = ProfileManager.activeProfileId ?: "default"
-        if (!SupabaseProvider.isConfigured) return
-        val client = SupabaseProvider.clientFor(appContext, profileId)
+        val client = SupabaseProvider.initialize(appContext) ?: return
 
         // Auth restores its persisted session asynchronously. Reading the session while it is
         // still Initializing briefly looks like a sign-out and must not clear local user data.

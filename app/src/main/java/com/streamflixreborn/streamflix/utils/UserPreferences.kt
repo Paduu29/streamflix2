@@ -16,6 +16,9 @@ import androidx.core.content.edit
 import com.streamflixreborn.streamflix.database.AppDatabase
 import org.json.JSONObject
 import org.json.JSONArray
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
+import java.io.File
 
 object UserPreferences {
 
@@ -72,10 +75,7 @@ object UserPreferences {
 
     fun setup(context: Context) {
         val prefsName = "${BuildConfig.APPLICATION_ID}.preferences"
-        globalPrefs = context.getSharedPreferences(
-            "${BuildConfig.APPLICATION_ID}.global_preferences",
-            Context.MODE_PRIVATE,
-        )
+        globalPrefs = getGlobalPreferences(context)
 
         prefs = context.getSharedPreferences(
             prefsName,
@@ -89,6 +89,34 @@ object UserPreferences {
             providerCache = runCatching { JSONObject(jsonString) }.getOrDefault(JSONObject())
         }
     }
+
+    /**
+     * A killed process can leave an old SharedPreferences file unreadable on
+     * some Android versions. Keep the damaged file for recovery and recreate
+     * only this small global state store; profile preference files are untouched.
+     */
+    private fun getGlobalPreferences(context: Context): SharedPreferences {
+        val name = "${BuildConfig.APPLICATION_ID}.global_preferences"
+        val file = File(context.applicationInfo.dataDir, "shared_prefs/$name.xml")
+        if (file.isFile && !isReadablePreferencesFile(file)) {
+            val backup = File(file.parentFile, "$name.xml.corrupt-${System.currentTimeMillis()}")
+            if (file.renameTo(backup)) {
+                Log.w(TAG, "Moved unreadable global preferences to ${backup.name}")
+            }
+        }
+        return context.getSharedPreferences(name, Context.MODE_PRIVATE)
+    }
+
+    private fun isReadablePreferencesFile(file: File): Boolean = runCatching {
+        val parser = XmlPullParserFactory.newInstance().newPullParser()
+        file.inputStream().use { input ->
+            parser.setInput(input, null)
+            check(parser.eventType == XmlPullParser.START_DOCUMENT)
+            check(parser.next() == XmlPullParser.START_TAG)
+            while (parser.next() != XmlPullParser.END_DOCUMENT) Unit
+        }
+        true
+    }.getOrDefault(false)
 
     fun getProfilePreferenceString(key: String, defaultValue: String? = null): String? =
         effectivePrefs.getString(key, defaultValue)
@@ -247,9 +275,17 @@ object UserPreferences {
         }
 
     var parentalControlMaxAge: Int?
-        get() = Key.PARENTAL_CONTROL_MAX_AGE.getInt()
+        get() {
+            val raw = Key.PARENTAL_CONTROL_MAX_AGE.rawValue()
+            val value = raw as? String
+            val parsed = value?.takeIf { it.isNotBlank() }?.toIntOrNull()
+            if (raw != null && (value == null || (value.isNotBlank() && parsed == null))) {
+                Key.PARENTAL_CONTROL_MAX_AGE.remove()
+            }
+            return parsed
+        }
         set(value) {
-            Key.PARENTAL_CONTROL_MAX_AGE.setInt(value)
+            Key.PARENTAL_CONTROL_MAX_AGE.setString(value?.toString())
         }
 
     var parentalControlFailedAttempts: Int
@@ -625,6 +661,8 @@ object UserPreferences {
             getPrefs().contains(name) -> getPrefs().getStringSet(name, null)
             else -> null
         }
+
+        fun rawValue(): Any? = getPrefs().all[name]
 
         fun setStringSet(value: Set<String>?) = value?.let {
             with(getPrefs().edit()) {
