@@ -1569,14 +1569,20 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
         }
 
         removePinPreference?.setOnPreferenceClickListener {
-            changeParentalSettingWithPinCheck {
-                UserPreferences.parentalControlPin = ""
-                UserPreferences.parentalControlMaxAge = null
-                maxAgePreference?.value = ""
-                UserPreferences.unlockParentalControls()
-                Toast.makeText(requireContext(), getString(R.string.settings_parental_pin_removed), Toast.LENGTH_SHORT).show()
-                ProviderChangeNotifier.notifyProviderChanged()
-                updateParentalControlPreferenceState()
+            val removePin = {
+                if (UserPreferences.saveParentalControlPin("")) {
+                    UserPreferences.parentalControlMaxAge = null
+                    maxAgePreference?.value = ""
+                    UserPreferences.unlockParentalControls()
+                    Toast.makeText(requireContext(), getString(R.string.settings_parental_pin_removed), Toast.LENGTH_SHORT).show()
+                    ProviderChangeNotifier.notifyProviderChanged()
+                    updateParentalControlPreferenceState()
+                }
+            }
+            if (UserPreferences.parentalControlAdminPin.isNotBlank()) {
+                changeAdminSettingWithPinCheck(removePin)
+            } else {
+                changeParentalSettingWithPinCheck(removePin)
             }
             true
         }
@@ -1639,7 +1645,6 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
 
         pinPreference?.apply {
             isEnabled = tmdbEnabled && !isLocked
-            text = ""
             summary = when {
                 !tmdbEnabled -> getString(R.string.settings_parental_requires_tmdb)
                 UserPreferences.parentalControlHardLocked -> getString(R.string.settings_parental_locked_hard)
@@ -1654,7 +1659,6 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
 
         adminPinPreference?.apply {
             isEnabled = tmdbEnabled
-            text = ""
             summary = when {
                 !tmdbEnabled -> getString(R.string.settings_parental_requires_tmdb)
                 UserPreferences.parentalControlAdminPin.isBlank() -> getString(R.string.settings_parental_admin_pin_not_set)
@@ -1792,7 +1796,7 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
             return
         }
 
-        changeParentalSettingWithPinCheck {
+        val showEditor = {
             promptForPinValue(
                 titleRes = R.string.settings_parental_pin_title,
                 messageRes = if (UserPreferences.parentalControlPin.isBlank()) {
@@ -1804,26 +1808,33 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
                 onSubmit = { newPin ->
                     when {
                         newPin.isBlank() -> {
-                            UserPreferences.parentalControlPin = ""
-                            UserPreferences.parentalControlMaxAge = null
-                            maxAgePreference?.value = ""
-                            UserPreferences.unlockParentalControls()
-                            Toast.makeText(requireContext(), getString(R.string.settings_parental_pin_removed), Toast.LENGTH_SHORT).show()
-                            ProviderChangeNotifier.notifyProviderChanged()
-                            updateParentalControlPreferenceState()
+                            if (UserPreferences.saveParentalControlPin("")) {
+                                UserPreferences.parentalControlMaxAge = null
+                                maxAgePreference?.value = ""
+                                UserPreferences.unlockParentalControls()
+                                Toast.makeText(requireContext(), getString(R.string.settings_parental_pin_removed), Toast.LENGTH_SHORT).show()
+                                ProviderChangeNotifier.notifyProviderChanged()
+                                updateParentalControlPreferenceState()
+                            }
                             null
                         }
                         newPin.length < 4 -> getString(R.string.settings_parental_pin_too_short)
                         else -> {
-                            UserPreferences.parentalControlPin = newPin
-                            Toast.makeText(requireContext(), getString(R.string.settings_parental_pin_saved), Toast.LENGTH_SHORT).show()
-                            ProviderChangeNotifier.notifyProviderChanged()
-                            updateParentalControlPreferenceState()
+                            if (UserPreferences.saveParentalControlPin(newPin)) {
+                                Toast.makeText(requireContext(), getString(R.string.settings_parental_pin_saved), Toast.LENGTH_SHORT).show()
+                                ProviderChangeNotifier.notifyProviderChanged()
+                                updateParentalControlPreferenceState()
+                            }
                             null
                         }
                     }
                 }
             )
+        }
+        if (UserPreferences.parentalControlAdminPin.isNotBlank()) {
+            changeAdminSettingWithPinCheck(showEditor)
+        } else {
+            changeParentalSettingWithPinCheck(showEditor)
         }
     }
 

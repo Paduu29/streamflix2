@@ -268,6 +268,11 @@ object UserPreferences {
             Key.PARENTAL_CONTROL_PIN.setString(value.trim())
         }
 
+    fun saveParentalControlPin(value: String): Boolean =
+        effectivePrefs.edit()
+            .putString(Key.PARENTAL_CONTROL_PIN.name, value.trim())
+            .commit()
+
     var parentalControlAdminPin: String
         get() = Key.PARENTAL_CONTROL_ADMIN_PIN.getString() ?: ""
         set(value) {
